@@ -6,6 +6,9 @@ import { AudioEngine } from "./audio";
 import { log } from "./logger";
 import { narrate } from "./narration";
 import type { NatalChart } from "./astrology";
+import type { BaziChart } from "./bazi";
+import { ELEMENT_COLORS } from "./bazi";
+import type { NumerologyChart } from "./numerology";
 
 const MIN_RADIUS = 1.5;
 const MAX_RADIUS = 7;
@@ -35,7 +38,9 @@ function makeGlowTexture(): THREE.Texture {
 }
 
 export type SceneController = {
-  applyNatalChart: (chart: NatalChart) => void;
+  applyAstrologyChart: (chart: NatalChart) => void;
+  applyBaziChart: (chart: BaziChart) => void;
+  applyNumerologyChart: (chart: NumerologyChart) => void;
 };
 
 export function startScene(container: HTMLElement): SceneController {
@@ -225,11 +230,13 @@ export function startScene(container: HTMLElement): SceneController {
   }
   buildZodiacTicks();
 
+  const extraGroup = new THREE.Group();
+  natalGroup.add(extraGroup);
+
   let chartHue = 0.6;
   const legendEl = document.getElementById("chartLegend");
 
-  /** 占星術の結果を反映: 太陽・月・上昇をそれぞれの黄経位置に配置する */
-  function applyNatalChart(chart: NatalChart) {
+  function clearChart() {
     for (const b of [...bodies]) {
       natalGroup.remove(b.mesh);
       scene.remove(b.trailPoints);
@@ -237,7 +244,18 @@ export function startScene(container: HTMLElement): SceneController {
       (b.trailPoints.material as THREE.Material).dispose();
     }
     bodies.length = 0;
+    for (const child of [...extraGroup.children]) {
+      extraGroup.remove(child);
+      if ((child as THREE.Line).geometry) (child as THREE.Line).geometry.dispose();
+      const mat = (child as THREE.Line).material;
+      if (mat) (mat as THREE.Material).dispose();
+    }
+  }
 
+  /** 西洋占星術: 太陽・月・上昇をそれぞれの黄経位置に配置する */
+  function applyAstrologyChart(chart: NatalChart) {
+    clearChart();
+    zodiacTickGroup.visible = true;
     audio.configure(chart.scaleFreqs, chart.bpm);
     chartHue = chart.hue;
 
@@ -257,12 +275,77 @@ export function startScene(container: HTMLElement): SceneController {
       legendEl.classList.add("show");
     }
     narrate("reveal");
-    log("natal_chart_applied", {
-      sun: chart.sun.signName,
-      moon: chart.moon.signName,
-      ascendant: chart.ascendant.signName,
-      moonPhase: chart.moonPhaseName,
+    log("astrology_chart_applied", {
+      sun: chart.sun.signName, moon: chart.moon.signName,
+      ascendant: chart.ascendant.signName, moonPhase: chart.moonPhaseName,
     });
+  }
+
+  /** 四柱推命: 年・月・日・時の四柱を五行の色で四方に配置する */
+  function applyBaziChart(chart: BaziChart) {
+    clearChart();
+    zodiacTickGroup.visible = false;
+    audio.configure(chart.scaleFreqs, chart.bpm);
+    chartHue = chart.hue;
+
+    const pillars = [
+      { label: "年柱", p: chart.year, radius: 3.2, angle: 0 },
+      { label: "月柱", p: chart.month, radius: 4.2, angle: 90 },
+      { label: "日柱", p: chart.day, radius: 5.2, angle: 180 },
+      { label: "時柱", p: chart.hour, radius: 6.2, angle: 270 },
+    ];
+    for (const { p, radius, angle } of pillars) {
+      addBody(radius, angle, new THREE.Color(ELEMENT_COLORS[p.element]));
+    }
+
+    if (legendEl) {
+      legendEl.innerHTML = pillars
+        .map(({ label, p }) => `<span style="color:#${ELEMENT_COLORS[p.element].toString(16).padStart(6, "0")}">${label} ${p.stem}${p.branch}</span>`)
+        .join("　");
+      legendEl.classList.add("show");
+    }
+    narrate("reveal");
+    log("bazi_chart_applied", {
+      year: `${chart.year.stem}${chart.year.branch}`, month: `${chart.month.stem}${chart.month.branch}`,
+      day: `${chart.day.stem}${chart.day.branch}`, hour: `${chart.hour.stem}${chart.hour.branch}`,
+      dayMasterElement: chart.dayMasterElement,
+    });
+  }
+
+  /** 数秘術: ライフパスナンバーの数だけ頂点を持つ幾何学模様を描く */
+  function applyNumerologyChart(chart: NumerologyChart) {
+    clearChart();
+    zodiacTickGroup.visible = false;
+    audio.configure(chart.scaleFreqs, chart.bpm);
+    chartHue = chart.hue;
+
+    const radius = 4.8;
+    const n = Math.max(3, Math.round(chart.vertices));
+    const color = new THREE.Color(chart.color);
+    const positions: THREE.Vector3[] = [];
+    for (let i = 0; i < n; i++) {
+      const angleDeg = (360 / n) * i;
+      addBody(radius, angleDeg, color);
+      const a = THREE.MathUtils.degToRad(angleDeg);
+      positions.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
+    }
+    const linePts: THREE.Vector3[] = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        linePts.push(positions[i], positions[j]);
+      }
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(linePts);
+    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending });
+    extraGroup.add(new THREE.LineSegments(geo, mat));
+
+    if (legendEl) {
+      const destinyText = chart.destiny !== null ? `　ディスティニー『${chart.destiny}』` : "";
+      legendEl.innerHTML = `ライフパス『${chart.lifePath}』${destinyText}`;
+      legendEl.classList.add("show");
+    }
+    narrate("reveal");
+    log("numerology_chart_applied", { lifePath: chart.lifePath, destiny: chart.destiny });
   }
 
   // --- 流れ星 ---
@@ -400,5 +483,5 @@ export function startScene(container: HTMLElement): SceneController {
   }
   animate();
 
-  return { applyNatalChart };
+  return { applyAstrologyChart, applyBaziChart, applyNumerologyChart };
 }

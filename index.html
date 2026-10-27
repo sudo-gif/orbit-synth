@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Orbit Synth — 西洋占星術</title>
+    <title>Orbit Synth — 星と数の占い</title>
     <style>
       html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; }
       #app { position: relative; width: 100vw; height: 100vh; }
@@ -55,6 +55,31 @@
       }
       #chartLegend.show { opacity: 0.85; }
 
+      #methodSelect {
+        position: absolute; left: 50%; top: 50%; z-index: 15;
+        transform: translate(-50%, -50%);
+        display: flex; flex-direction: column; align-items: center; gap: 14px;
+        padding: 32px 40px; border-radius: 4px;
+        background: rgba(6, 8, 20, 0.55); backdrop-filter: blur(6px);
+        border: 1px solid rgba(140, 160, 255, 0.2);
+        opacity: 0; pointer-events: none;
+        transition: opacity 1.8s ease;
+      }
+      #methodSelect.show { opacity: 1; pointer-events: auto; }
+      #methodSelect .label {
+        color: #9fb0e0; font: 300 13px/1.8 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.2em; text-align: center;
+      }
+      #methodSelect .methods { display: flex; gap: 12px; }
+      #methodSelect button {
+        padding: 14px 20px; border-radius: 3px; cursor: pointer; min-width: 120px;
+        background: rgba(140, 160, 255, 0.1); border: 1px solid rgba(160,180,255,0.4);
+        color: #e8ecff; font: 300 13px/1.7 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.15em; transition: background 0.3s ease;
+      }
+      #methodSelect button:hover { background: rgba(140, 160, 255, 0.28); }
+      #methodSelect button small { display: block; margin-top: 4px; color: #8290c0; font-size: 11px; letter-spacing: 0.05em; }
+
       #fortuneForm {
         position: absolute; left: 50%; top: 50%; z-index: 15;
         transform: translate(-50%, -50%);
@@ -75,6 +100,9 @@
         color: #e8ecff; padding: 8px 12px; border-radius: 3px; font: 13px system-ui, sans-serif;
         color-scheme: dark;
       }
+      #fortuneForm #nameField { display: none; }
+      #fortuneForm.numerology #nameField { display: block; }
+      #fortuneForm #nameField input { width: 200px; }
       #fortuneForm button {
         margin-top: 4px; padding: 9px 28px; border-radius: 3px; cursor: pointer;
         background: rgba(140, 160, 255, 0.18); border: 1px solid rgba(160,180,255,0.5);
@@ -129,12 +157,23 @@
     <div id="chartLegend"></div>
     <div id="intro">
       <div class="title">O R B I T &nbsp; S Y N T H</div>
-      <div class="subtitle">西洋占星術で描く、あなたの小さな宇宙</div>
+      <div class="subtitle">占いで描く、あなたの小さな宇宙</div>
+    </div>
+    <div id="methodSelect">
+      <div class="label">どの占いで、あなたの宇宙を描きますか</div>
+      <div class="methods">
+        <button type="button" data-method="astrology">西洋占星術<small>星座の環</small></button>
+        <button type="button" data-method="bazi">四柱推命<small>五行の柱</small></button>
+        <button type="button" data-method="numerology">数秘術<small>数の幾何学</small></button>
+      </div>
     </div>
     <form id="fortuneForm">
       <div class="label">あなたの生まれた刻を、宇宙に伝えてください</div>
       <input type="date" id="birthDate" required />
       <input type="time" id="birthTime" />
+      <div id="nameField">
+        <input type="text" id="birthName" placeholder="お名前(アルファベット・任意)" />
+      </div>
       <button type="submit">占う</button>
       <button type="button" class="skip" id="skipFortune">占わずに始める</button>
     </form>
