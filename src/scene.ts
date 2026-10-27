@@ -5,6 +5,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { AudioEngine } from "./audio";
 import { log } from "./logger";
 import { narrate } from "./narration";
+import type { Chart } from "./fortune";
 
 const MIN_RADIUS = 1.5;
 const MAX_RADIUS = 7;
@@ -35,7 +36,11 @@ function makeGlowTexture(): THREE.Texture {
   return new THREE.CanvasTexture(canvas);
 }
 
-export function startScene(container: HTMLElement): void {
+export type SceneController = {
+  applyChart: (chart: Chart) => void;
+};
+
+export function startScene(container: HTMLElement): SceneController {
   const audio = new AudioEngine();
   const glowTexture = makeGlowTexture();
 
@@ -227,6 +232,32 @@ export function startScene(container: HTMLElement): void {
   addPlanet(6, Math.PI * 1.3, 0.35);
   isInitial = false;
 
+  let chartHue = 0.6;
+
+  /** 占いの結果を反映: 惑星配置と調べ・テンポを入れ替える */
+  function applyChart(chart: Chart) {
+    for (const p of [...planets]) {
+      scene.remove(p.mesh);
+      scene.remove(p.trailPoints);
+      p.trailPoints.geometry.dispose();
+      (p.trailPoints.material as THREE.Material).dispose();
+    }
+    planets.length = 0;
+    orbitGroup.clear();
+
+    audio.configure(chart.scaleFreqs, chart.bpm);
+    chartHue = chart.hue;
+
+    isInitial = true;
+    chart.planetSeeds.forEach((seed, i) => {
+      const radius = MIN_RADIUS + seed * (MAX_RADIUS - MIN_RADIUS);
+      const angle = seed * Math.PI * 2 * (i + 1.3);
+      const speed = 0.3 + ((seed * 7) % 1) * 1.2;
+      addPlanet(radius, angle, speed);
+    });
+    isInitial = false;
+  }
+
   // --- 入力(ドラッグで半径変更、ホイールで速度変更、ダブルクリックで削除) ---
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -357,6 +388,7 @@ export function startScene(container: HTMLElement): void {
   const lowColor = new THREE.Color(0xff5a33);
   const midColor = new THREE.Color(0x33ffa0);
   const highColor = new THREE.Color(0x8a66ff);
+  const accentColor = new THREE.Color();
 
   function animate() {
     requestAnimationFrame(animate);
@@ -404,7 +436,8 @@ export function startScene(container: HTMLElement): void {
       .copy(lowColor).multiplyScalar(bands.low)
       .add(tmpColor.clone().copy(midColor).multiplyScalar(bands.mid))
       .add(tmpColor.clone().copy(highColor).multiplyScalar(bands.high));
-    nebulaMat.color.copy(tmpColor);
+    accentColor.setHSL(chartHue, 0.6, 0.55);
+    nebulaMat.color.copy(tmpColor).lerp(accentColor, 0.35);
     nebulaMat.opacity = 0.1 + ((bands.low + bands.mid + bands.high) / 3) * 0.35;
     nebula.rotation.y += dt * 0.02;
 
@@ -445,4 +478,6 @@ export function startScene(container: HTMLElement): void {
     composer.render();
   }
   animate();
+
+  return { applyChart };
 }

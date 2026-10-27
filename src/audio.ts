@@ -1,10 +1,9 @@
-const BPM = 112;
-const STEP_SECONDS = 60 / BPM / 4; // 16分音符単位
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD_SECONDS = 0.1;
 
-// Aマイナーペンタトニック(常に心地よく響く)
-const SCALE = [110.0, 130.81, 146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33];
+// Aマイナーペンタトニック(常に心地よく響く) — デフォルト/占い未入力時の調べ
+const DEFAULT_SCALE = [110.0, 130.81, 146.83, 164.81, 196.0, 220.0, 261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33];
+const DEFAULT_BPM = 112;
 
 export class AudioEngine {
   private ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -13,6 +12,9 @@ export class AudioEngine {
   private reverbSend = this.ctx.createGain();
   analyser = this.ctx.createAnalyser();
   private freqData: Uint8Array<ArrayBuffer>;
+
+  private scale: number[] = DEFAULT_SCALE;
+  private stepSeconds = 60 / DEFAULT_BPM / 4;
 
   private step = 0;
   private nextStepTime = 0;
@@ -31,6 +33,13 @@ export class AudioEngine {
     this.analyser.connect(this.ctx.destination);
     this.reverbSend.connect(this.reverb);
     this.reverb.connect(this.analyser);
+  }
+
+  /** 占いの結果などから、調べ(スケール)とテンポを差し替える */
+  configure(scaleFreqs: number[], bpm: number): void {
+    this.scale = scaleFreqs;
+    this.stepSeconds = 60 / bpm / 4;
+    this.step = 0;
   }
 
   private makeImpulseResponse(seconds: number, decay: number): AudioBuffer {
@@ -78,9 +87,9 @@ export class AudioEngine {
   /** 惑星が周回を1周したときに鳴る音。半径をスケールに量子化してピッチを決め、軌道の帯ごとに音色を変える */
   playNote(radius: number, minR: number, maxR: number): void {
     const t = this.ctx.currentTime;
-    const norm = THREE_clamp(1 - (radius - minR) / Math.max(0.001, maxR - minR)); // 内側ほど高音
-    const idx = Math.round(norm * (SCALE.length - 1));
-    const freq = SCALE[idx];
+    const norm = clamp01(1 - (radius - minR) / Math.max(0.001, maxR - minR)); // 内側ほど高音
+    const idx = Math.round(norm * (this.scale.length - 1));
+    const freq = this.scale[idx];
 
     const gain = this.ctx.createGain();
     gain.connect(this.master);
@@ -147,15 +156,15 @@ export class AudioEngine {
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0, time);
     gain.gain.linearRampToValueAtTime(0.06, time + 0.3);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + STEP_SECONDS * 16);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + this.stepSeconds * 16);
     gain.connect(this.master);
     gain.connect(this.reverbSend);
     const osc = this.ctx.createOscillator();
     osc.type = "sine";
-    osc.frequency.value = SCALE[0] / 2;
+    osc.frequency.value = this.scale[0] / 2;
     osc.connect(gain);
     osc.start(time);
-    osc.stop(time + STEP_SECONDS * 16 + 0.1);
+    osc.stop(time + this.stepSeconds * 16 + 0.1);
   }
 
   private startAutoBeat(): void {
@@ -164,7 +173,7 @@ export class AudioEngine {
       while (this.nextStepTime < this.ctx.currentTime + SCHEDULE_AHEAD_SECONDS) {
         if (this.step % 4 === 0) this.playKick(this.nextStepTime); // 4つ打ち
         if (this.step === 0) this.playRootDrone(this.nextStepTime);
-        this.nextStepTime += STEP_SECONDS;
+        this.nextStepTime += this.stepSeconds;
         this.step = (this.step + 1) % 16;
       }
       this.schedulerId = window.setTimeout(tick, LOOKAHEAD_MS);
@@ -173,6 +182,6 @@ export class AudioEngine {
   }
 }
 
-function THREE_clamp(v: number): number {
+function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
 }

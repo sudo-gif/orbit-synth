@@ -53,6 +53,54 @@
         transition: opacity 2.2s ease;
       }
       #narration.show { opacity: 0.85; }
+
+      #fortuneForm {
+        position: absolute; left: 50%; top: 50%; z-index: 15;
+        transform: translate(-50%, -50%);
+        display: flex; flex-direction: column; align-items: center; gap: 14px;
+        padding: 32px 40px; border-radius: 4px;
+        background: rgba(6, 8, 20, 0.55); backdrop-filter: blur(6px);
+        border: 1px solid rgba(140, 160, 255, 0.2);
+        opacity: 0; pointer-events: none;
+        transition: opacity 1.8s ease;
+      }
+      #fortuneForm.show { opacity: 1; pointer-events: auto; }
+      #fortuneForm .label {
+        color: #9fb0e0; font: 300 13px/1.8 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.2em;
+      }
+      #fortuneForm input {
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(160,180,255,0.35);
+        color: #e8ecff; padding: 8px 12px; border-radius: 3px; font: 13px system-ui, sans-serif;
+        color-scheme: dark;
+      }
+      #fortuneForm button {
+        margin-top: 4px; padding: 9px 28px; border-radius: 3px; cursor: pointer;
+        background: rgba(140, 160, 255, 0.18); border: 1px solid rgba(160,180,255,0.5);
+        color: #e8ecff; font: 300 13px/1.6 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.3em; text-indent: 0.3em;
+        transition: background 0.3s ease;
+      }
+      #fortuneForm button:hover { background: rgba(140, 160, 255, 0.32); }
+      #fortuneForm .skip {
+        margin-top: 2px; color: #6a7aa8; font: 11px/1.6 system-ui, sans-serif;
+        text-decoration: underline; cursor: pointer; background: none; border: none;
+        letter-spacing: 0.05em;
+      }
+
+      #fortuneResult {
+        position: absolute; left: 50%; top: 50%; z-index: 15;
+        transform: translate(-50%, -50%);
+        max-width: 520px; text-align: center; padding: 28px 36px;
+        color: #e4e8ff; font: 300 15px/2.1 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.1em; white-space: pre-line;
+        text-shadow: 0 0 20px rgba(150, 170, 255, 0.5);
+        background: rgba(6, 8, 20, 0.45); backdrop-filter: blur(6px);
+        border: 1px solid rgba(140, 160, 255, 0.2); border-radius: 4px;
+        opacity: 0; pointer-events: none;
+        transition: opacity 2s ease;
+      }
+      #fortuneResult.show { opacity: 1; }
     </style>
   </head>
   <body>
@@ -64,6 +112,14 @@
       <div class="title">O R B I T &nbsp; S Y N T H</div>
       <div class="subtitle">惑星が奏でる、小さな宇宙</div>
     </div>
+    <form id="fortuneForm">
+      <div class="label">あなたの生まれた刻を、宇宙に伝えてください</div>
+      <input type="date" id="birthDate" required />
+      <input type="time" id="birthTime" />
+      <button type="submit">占う</button>
+      <button type="button" class="skip" id="skipFortune">占わずに始める</button>
+    </form>
+    <div id="fortuneResult"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
