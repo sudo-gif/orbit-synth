@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Orbit Synth</title>
+    <title>Orbit Synth — 西洋占星術</title>
     <style>
       html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; }
       #app { position: relative; width: 100vw; height: 100vh; }
@@ -12,14 +12,6 @@
         position: absolute; inset: 0; z-index: 5; pointer-events: none;
         background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%);
       }
-
-      #hint {
-        position: absolute; left: 16px; bottom: 16px; z-index: 10;
-        color: #cfd8ff; font: 13px/1.5 system-ui, sans-serif; opacity: 0;
-        pointer-events: none; max-width: 360px;
-        transition: opacity 2s ease;
-      }
-      #hint.show { opacity: 0.6; }
 
       #intro {
         position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
@@ -54,6 +46,15 @@
       }
       #narration.show { opacity: 0.85; }
 
+      #chartLegend {
+        position: absolute; left: 50%; bottom: 20px; z-index: 10;
+        transform: translateX(-50%);
+        color: #c4cdf0; font: 13px/1.8 system-ui, sans-serif; letter-spacing: 0.05em;
+        text-align: center; white-space: nowrap; opacity: 0; pointer-events: none;
+        transition: opacity 2s ease;
+      }
+      #chartLegend.show { opacity: 0.85; }
+
       #fortuneForm {
         position: absolute; left: 50%; top: 50%; z-index: 15;
         transform: translate(-50%, -50%);
@@ -67,7 +68,7 @@
       #fortuneForm.show { opacity: 1; pointer-events: auto; }
       #fortuneForm .label {
         color: #9fb0e0; font: 300 13px/1.8 "Hiragino Mincho ProN", "Yu Mincho", serif;
-        letter-spacing: 0.2em;
+        letter-spacing: 0.2em; text-align: center;
       }
       #fortuneForm input {
         background: rgba(255,255,255,0.05); border: 1px solid rgba(160,180,255,0.35);
@@ -91,7 +92,7 @@
       #fortuneResult {
         position: absolute; left: 50%; top: 50%; z-index: 15;
         transform: translate(-50%, -50%);
-        max-width: 520px; text-align: center; padding: 28px 36px;
+        max-width: 560px; text-align: center; padding: 28px 36px;
         color: #e4e8ff; font: 300 15px/2.1 "Hiragino Mincho ProN", "Yu Mincho", serif;
         letter-spacing: 0.1em; white-space: pre-line;
         text-shadow: 0 0 20px rgba(150, 170, 255, 0.5);
@@ -101,16 +102,34 @@
         transition: opacity 2s ease;
       }
       #fortuneResult.show { opacity: 1; }
+
+      #vision {
+        position: fixed; inset: 0; z-index: 30;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        text-align: center; pointer-events: none;
+        background: radial-gradient(ellipse at center, rgba(4,4,14,0.88) 0%, rgba(2,2,10,0.65) 100%);
+        opacity: 0; transition: opacity 1.8s ease;
+      }
+      #vision.show { opacity: 1; }
+      #vision .label {
+        color: #a8b4e8; font: 300 12px/1.8 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.4em; text-indent: 0.4em; opacity: 0.85;
+      }
+      #vision .text {
+        margin-top: 16px; max-width: 560px; padding: 0 24px;
+        color: #f0f2ff; font: 300 20px/2 "Hiragino Mincho ProN", "Yu Mincho", serif;
+        letter-spacing: 0.08em; text-shadow: 0 0 24px rgba(170, 180, 255, 0.7);
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
     <div id="vignette"></div>
     <div id="narration"></div>
-    <div id="hint">ドラッグで惑星を配置・速度変更 / クリックで惑星を追加</div>
+    <div id="chartLegend"></div>
     <div id="intro">
       <div class="title">O R B I T &nbsp; S Y N T H</div>
-      <div class="subtitle">惑星が奏でる、小さな宇宙</div>
+      <div class="subtitle">西洋占星術で描く、あなたの小さな宇宙</div>
     </div>
     <form id="fortuneForm">
       <div class="label">あなたの生まれた刻を、宇宙に伝えてください</div>
@@ -120,6 +139,10 @@
       <button type="button" class="skip" id="skipFortune">占わずに始める</button>
     </form>
     <div id="fortuneResult"></div>
+    <div id="vision">
+      <div class="label"></div>
+      <div class="text"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -5,18 +5,16 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { AudioEngine } from "./audio";
 import { log } from "./logger";
 import { narrate } from "./narration";
-import type { Chart } from "./fortune";
+import type { NatalChart } from "./astrology";
 
 const MIN_RADIUS = 1.5;
 const MAX_RADIUS = 7;
 const TRAIL_LENGTH = 50;
 
-type Planet = {
+type Body = {
   mesh: THREE.Mesh;
   radius: number;
-  angle: number;
-  angularSpeed: number; // rad/sec
-  id: string;
+  baseAngle: number; // natalGroup内でのローカル角度(黄経に対応)
   trail: THREE.Vector3[];
   trailPoints: THREE.Points;
   color: THREE.Color;
@@ -37,7 +35,7 @@ function makeGlowTexture(): THREE.Texture {
 }
 
 export type SceneController = {
-  applyChart: (chart: Chart) => void;
+  applyNatalChart: (chart: NatalChart) => void;
 };
 
 export function startScene(container: HTMLElement): SceneController {
@@ -67,26 +65,14 @@ export function startScene(container: HTMLElement): SceneController {
   );
   composer.addPass(bloomPass);
 
-  // --- 太陽 ---
-  const sun = new THREE.Mesh(
-    new THREE.SphereGeometry(0.9, 32, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffe08a })
+  // --- 中心核(データとは独立した視覚上の中心) ---
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xcfd6ff })
   );
-  scene.add(sun);
-  const sunLight = new THREE.PointLight(0xffe08a, 3, 30);
-  scene.add(sunLight);
-
-  // --- 軌道ガイド ---
-  const orbitGroup = new THREE.Group();
-  scene.add(orbitGroup);
-  function addOrbitRing(radius: number) {
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(radius - 0.01, radius + 0.01, 128),
-      new THREE.MeshBasicMaterial({ color: 0x3a4a8a, side: THREE.DoubleSide, transparent: true, opacity: 0.3 })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    orbitGroup.add(ring);
-  }
+  scene.add(core);
+  const coreLight = new THREE.PointLight(0xcfd6ff, 2.4, 30);
+  scene.add(coreLight);
 
   // --- 星(瞬くシェーダー) ---
   const starCount = 1800;
@@ -142,7 +128,7 @@ export function startScene(container: HTMLElement): SceneController {
   const stars = new THREE.Points(starGeo, starMat);
   scene.add(stars);
 
-  // --- 星雲(音の帯域で色が変わる背景のもや) ---
+  // --- 星雲(音の帯域+占星術のアクセントカラーで色が変わる背景のもや) ---
   const nebulaCount = 220;
   const nebulaGeo = new THREE.BufferGeometry();
   const nebulaPos = new Float32Array(nebulaCount * 3);
@@ -167,15 +153,14 @@ export function startScene(container: HTMLElement): SceneController {
   const nebula = new THREE.Points(nebulaGeo, nebulaMat);
   scene.add(nebula);
 
-  // --- 惑星 ---
-  const planets: Planet[] = [];
-  const planetGeo = new THREE.SphereGeometry(0.35, 24, 24);
+  // --- ネイタルチャート(占星術の結果を表示する回転する環) ---
+  const natalGroup = new THREE.Group();
+  scene.add(natalGroup);
+  const zodiacTickGroup = new THREE.Group();
+  natalGroup.add(zodiacTickGroup);
 
-  function pitchColor(radius: number): THREE.Color {
-    const norm = 1 - (radius - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS);
-    const hue = 0.55 + norm * 0.35; // 水色〜紫
-    return new THREE.Color().setHSL(hue, 0.7, 0.6);
-  }
+  const bodyGeo = new THREE.SphereGeometry(0.35, 24, 24);
+  const bodies: Body[] = [];
 
   function makeTrailPoints(): THREE.Points {
     const geo = new THREE.BufferGeometry();
@@ -197,152 +182,88 @@ export function startScene(container: HTMLElement): SceneController {
     return points;
   }
 
-  function addPlanet(radius: number, angle: number, angularSpeed: number) {
-    const color = pitchColor(radius);
+  function addBody(radius: number, angleDeg: number, color: THREE.Color): Body {
     const mesh = new THREE.Mesh(
-      planetGeo,
-      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 })
+      bodyGeo,
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.7 })
     );
-    scene.add(mesh);
-    addOrbitRing(radius);
-    const planet: Planet = {
-      mesh,
-      radius,
-      angle,
-      angularSpeed,
-      id: crypto.randomUUID(),
-      trail: [],
-      trailPoints: makeTrailPoints(),
-      color,
-    };
-    planets.push(planet);
-    log("planet_added", { id: planet.id, radius, angularSpeed });
-    if (!isInitial) {
-      if (planets.length === 4) narrate("firstPlanet");
-      else if (planets.length === 6) narrate("fewPlanets");
-      else if (planets.length >= 9) narrate("manyPlanets");
-    }
-    return planet;
+    const baseAngle = THREE.MathUtils.degToRad(angleDeg);
+    mesh.position.set(Math.cos(baseAngle) * radius, 0, Math.sin(baseAngle) * radius);
+    natalGroup.add(mesh);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(radius - 0.01, radius + 0.01, 128),
+      new THREE.MeshBasicMaterial({ color: 0x3a4a8a, side: THREE.DoubleSide, transparent: true, opacity: 0.25 })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    natalGroup.add(ring);
+
+    const body: Body = { mesh, radius, baseAngle, trail: [], trailPoints: makeTrailPoints(), color };
+    bodies.push(body);
+    return body;
   }
 
-  // 初期惑星を3つ配置(ナレーションは発生させない)
-  let isInitial = true;
-  addPlanet(2.5, 0, 0.9);
-  addPlanet(4.2, Math.PI * 0.6, 0.55);
-  addPlanet(6, Math.PI * 1.3, 0.35);
-  isInitial = false;
+  function buildZodiacTicks() {
+    const tickRadius = 7.3;
+    for (let i = 0; i < 12; i++) {
+      const a1 = THREE.MathUtils.degToRad(i * 30 - 0.6);
+      const a2 = THREE.MathUtils.degToRad(i * 30 + 0.6);
+      const pts = [
+        new THREE.Vector3(Math.cos(a1) * tickRadius, 0, Math.sin(a1) * tickRadius),
+        new THREE.Vector3(Math.cos(a2) * tickRadius, 0, Math.sin(a2) * tickRadius),
+      ];
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat = new THREE.LineBasicMaterial({ color: 0x6a7fd0, transparent: true, opacity: 0.55 });
+      zodiacTickGroup.add(new THREE.Line(geo, mat));
+    }
+    const outline = new THREE.Mesh(
+      new THREE.RingGeometry(tickRadius - 0.01, tickRadius + 0.01, 128),
+      new THREE.MeshBasicMaterial({ color: 0x3a4a8a, side: THREE.DoubleSide, transparent: true, opacity: 0.2 })
+    );
+    outline.rotation.x = -Math.PI / 2;
+    zodiacTickGroup.add(outline);
+  }
+  buildZodiacTicks();
 
   let chartHue = 0.6;
+  const legendEl = document.getElementById("chartLegend");
 
-  /** 占いの結果を反映: 惑星配置と調べ・テンポを入れ替える */
-  function applyChart(chart: Chart) {
-    for (const p of [...planets]) {
-      scene.remove(p.mesh);
-      scene.remove(p.trailPoints);
-      p.trailPoints.geometry.dispose();
-      (p.trailPoints.material as THREE.Material).dispose();
+  /** 占星術の結果を反映: 太陽・月・上昇をそれぞれの黄経位置に配置する */
+  function applyNatalChart(chart: NatalChart) {
+    for (const b of [...bodies]) {
+      natalGroup.remove(b.mesh);
+      scene.remove(b.trailPoints);
+      b.trailPoints.geometry.dispose();
+      (b.trailPoints.material as THREE.Material).dispose();
     }
-    planets.length = 0;
-    orbitGroup.clear();
+    bodies.length = 0;
 
     audio.configure(chart.scaleFreqs, chart.bpm);
     chartHue = chart.hue;
 
-    isInitial = true;
-    chart.planetSeeds.forEach((seed, i) => {
-      const radius = MIN_RADIUS + seed * (MAX_RADIUS - MIN_RADIUS);
-      const angle = seed * Math.PI * 2 * (i + 1.3);
-      const speed = 0.3 + ((seed * 7) % 1) * 1.2;
-      addPlanet(radius, angle, speed);
+    const sunColor = new THREE.Color(0xffd37a);
+    const moonColor = new THREE.Color(0xbfd4ff);
+    const ascColor = new THREE.Color(0xd59bff);
+
+    addBody(2.6, chart.sun.signIndex * 30 + chart.sun.degreeInSign, sunColor);
+    addBody(4.4, chart.moon.signIndex * 30 + chart.moon.degreeInSign, moonColor);
+    addBody(6.2, chart.ascendant.signIndex * 30 + chart.ascendant.degreeInSign, ascColor);
+
+    if (legendEl) {
+      legendEl.innerHTML =
+        `<span style="color:#ffd37a">☉ 太陽</span> ${chart.sun.signName}　` +
+        `<span style="color:#bfd4ff">☽ 月</span> ${chart.moon.signName}(${chart.moonPhaseName})　` +
+        `<span style="color:#d59bff">ASC 上昇</span> ${chart.ascendant.signName}`;
+      legendEl.classList.add("show");
+    }
+    narrate("reveal");
+    log("natal_chart_applied", {
+      sun: chart.sun.signName,
+      moon: chart.moon.signName,
+      ascendant: chart.ascendant.signName,
+      moonPhase: chart.moonPhaseName,
     });
-    isInitial = false;
   }
-
-  // --- 入力(ドラッグで半径変更、ホイールで速度変更、ダブルクリックで削除) ---
-  const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  let dragging: Planet | null = null;
-  let interacting = false;
-
-  function toPointer(ev: { clientX: number; clientY: number }) {
-    pointer.x = (ev.clientX / window.innerWidth) * 2 - 1;
-    pointer.y = -(ev.clientY / window.innerHeight) * 2 + 1;
-  }
-
-  function intersectGround(): THREE.Vector3 | null {
-    raycaster.setFromCamera(pointer, camera);
-    const point = new THREE.Vector3();
-    return raycaster.ray.intersectPlane(groundPlane, point) ? point : null;
-  }
-
-  renderer.domElement.addEventListener("pointerdown", (ev) => {
-    audio.resume();
-    interacting = true;
-    toPointer(ev);
-    raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects(planets.map((p) => p.mesh))[0];
-    if (hit) {
-      dragging = planets.find((p) => p.mesh === hit.object) ?? null;
-    } else {
-      const point = intersectGround();
-      if (point) {
-        const radius = THREE.MathUtils.clamp(point.length(), MIN_RADIUS, MAX_RADIUS);
-        const angle = Math.atan2(point.z, point.x);
-        addPlanet(radius, angle, 0.5 + Math.random() * 0.4);
-      }
-    }
-  });
-
-  renderer.domElement.addEventListener("pointermove", (ev) => {
-    if (!dragging) return;
-    toPointer(ev);
-    const point = intersectGround();
-    if (point) {
-      dragging.radius = THREE.MathUtils.clamp(point.length(), MIN_RADIUS, MAX_RADIUS);
-      dragging.angle = Math.atan2(point.z, point.x);
-      dragging.color = pitchColor(dragging.radius);
-      const mat = dragging.mesh.material as THREE.MeshStandardMaterial;
-      mat.color.copy(dragging.color);
-      mat.emissive.copy(dragging.color);
-    }
-  });
-
-  window.addEventListener("pointerup", () => {
-    interacting = false;
-    if (dragging) {
-      log("planet_moved", { id: dragging.id, radius: dragging.radius });
-      dragging = null;
-    }
-  });
-
-  renderer.domElement.addEventListener("wheel", (ev) => {
-    toPointer(ev);
-    raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects(planets.map((p) => p.mesh))[0];
-    if (!hit) return;
-    const planet = planets.find((p) => p.mesh === hit.object);
-    if (!planet) return;
-    ev.preventDefault();
-    planet.angularSpeed = THREE.MathUtils.clamp(planet.angularSpeed - ev.deltaY * 0.001, 0.05, 2.5);
-    log("planet_speed_changed", { id: planet.id, angularSpeed: planet.angularSpeed });
-    if (planet.angularSpeed > 1.8) narrate("fast");
-    else if (planet.angularSpeed < 0.15) narrate("slow");
-  }, { passive: false });
-
-  renderer.domElement.addEventListener("dblclick", (ev) => {
-    toPointer(ev);
-    raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects(planets.map((p) => p.mesh))[0];
-    if (!hit) return;
-    const idx = planets.findIndex((p) => p.mesh === hit.object);
-    if (idx === -1) return;
-    const [planet] = planets.splice(idx, 1);
-    scene.remove(planet.mesh);
-    scene.remove(planet.trailPoints);
-    log("planet_removed", { id: planet.id });
-    narrate("removed");
-  });
 
   // --- 流れ星 ---
   type ShootingStar = { line: THREE.Line; start: THREE.Vector3; end: THREE.Vector3; t: number; duration: number };
@@ -371,7 +292,8 @@ export function startScene(container: HTMLElement): SceneController {
 
   // --- オープニング演出 ---
   window.setTimeout(() => document.getElementById("intro")?.classList.add("fade"), 3800);
-  window.setTimeout(() => document.getElementById("hint")?.classList.add("show"), 4600);
+
+  window.addEventListener("pointerdown", () => audio.resume());
 
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -389,48 +311,49 @@ export function startScene(container: HTMLElement): SceneController {
   const midColor = new THREE.Color(0x33ffa0);
   const highColor = new THREE.Color(0x8a66ff);
   const accentColor = new THREE.Color();
+  const worldPos = new THREE.Vector3();
+  let prevGroupAngle = 0;
 
   function animate() {
     requestAnimationFrame(animate);
     const dt = clock.getDelta();
     elapsed += dt;
 
-    for (const planet of planets) {
-      const prevAngle = planet.angle;
-      planet.angle += planet.angularSpeed * dt;
-      if (Math.floor(planet.angle / (Math.PI * 2)) !== Math.floor(prevAngle / (Math.PI * 2))) {
-        audio.playNote(planet.radius, MIN_RADIUS, MAX_RADIUS);
-      }
-      planet.mesh.position.set(
-        Math.cos(planet.angle) * planet.radius,
-        0,
-        Math.sin(planet.angle) * planet.radius
-      );
+    natalGroup.rotation.y += dt * 0.025;
+    const groupAngle = natalGroup.rotation.y;
 
-      // 光の尾を更新
-      planet.trail.unshift(planet.mesh.position.clone());
-      if (planet.trail.length > TRAIL_LENGTH) planet.trail.pop();
-      const posAttr = planet.trailPoints.geometry.getAttribute("position") as THREE.BufferAttribute;
-      const colAttr = planet.trailPoints.geometry.getAttribute("color") as THREE.BufferAttribute;
-      for (let i = 0; i < planet.trail.length; i++) {
-        const p = planet.trail[i];
+    for (const body of bodies) {
+      const prevAbs = body.baseAngle + prevGroupAngle;
+      const curAbs = body.baseAngle + groupAngle;
+      if (Math.floor(curAbs / (Math.PI * 2)) !== Math.floor(prevAbs / (Math.PI * 2))) {
+        audio.playNote(body.radius, MIN_RADIUS, MAX_RADIUS);
+      }
+
+      body.mesh.getWorldPosition(worldPos);
+      body.trail.unshift(worldPos.clone());
+      if (body.trail.length > TRAIL_LENGTH) body.trail.pop();
+      const posAttr = body.trailPoints.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const colAttr = body.trailPoints.geometry.getAttribute("color") as THREE.BufferAttribute;
+      for (let i = 0; i < body.trail.length; i++) {
+        const p = body.trail[i];
         posAttr.setXYZ(i, p.x, p.y, p.z);
         const fade = 1 - i / TRAIL_LENGTH;
-        tmpColor.copy(planet.color).multiplyScalar(fade * fade * 1.4);
+        tmpColor.copy(body.color).multiplyScalar(fade * fade * 1.4);
         colAttr.setXYZ(i, tmpColor.r, tmpColor.g, tmpColor.b);
       }
       posAttr.needsUpdate = true;
       colAttr.needsUpdate = true;
-      planet.trailPoints.geometry.setDrawRange(0, planet.trail.length);
+      body.trailPoints.geometry.setDrawRange(0, body.trail.length);
     }
+    prevGroupAngle = groupAngle;
 
     const level = audio.getLevel();
     const bands = audio.getBands();
 
     starMat.uniforms.uTime.value = elapsed;
     starMat.uniforms.uLevel.value = level;
-    sunLight.intensity = 2 + level * 4;
-    sun.scale.setScalar(1 + level * 0.3);
+    coreLight.intensity = 1.8 + level * 3.5;
+    core.scale.setScalar(1 + level * 0.3);
 
     tmpColor
       .copy(lowColor).multiplyScalar(bands.low)
@@ -467,17 +390,15 @@ export function startScene(container: HTMLElement): SceneController {
       }
     }
 
-    if (!interacting) {
-      camAngle += dt * 0.03;
-      camera.position.x = Math.sin(camAngle) * baseCamPos.length() * 0.95;
-      camera.position.z = Math.cos(camAngle) * baseCamPos.length() * 0.95;
-      camera.position.y = baseCamPos.y + Math.sin(camAngle * 0.5) * 0.6;
-      camera.lookAt(0, 0, 0);
-    }
+    camAngle += dt * 0.03;
+    camera.position.x = Math.sin(camAngle) * baseCamPos.length() * 0.95;
+    camera.position.z = Math.cos(camAngle) * baseCamPos.length() * 0.95;
+    camera.position.y = baseCamPos.y + Math.sin(camAngle * 0.5) * 0.6;
+    camera.lookAt(0, 0, 0);
 
     composer.render();
   }
   animate();
 
-  return { applyChart };
+  return { applyNatalChart };
 }
