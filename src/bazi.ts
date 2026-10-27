@@ -25,7 +25,7 @@ const STEM_ELEMENT = ["木", "木", "火", "火", "土", "土", "金", "金", "�
 const BRANCH_ELEMENT = ["水", "土", "木", "木", "土", "火", "火", "土", "金", "金", "土", "水"];
 
 export const ELEMENT_COLORS: Record<string, number> = {
-  木: 0x5fd07a, 火: 0xff6a4d, 土: 0xd9a441, 金: 0xe6e6ee, 水: 0x4d9bff,
+  木: 0x9fd49a, 火: 0xf0917a, 土: 0xe0b06a, 金: 0xf0e8d8, 水: 0x9ab8e0,
 };
 
 const ELEMENT_TRAITS: Record<string, string> = {

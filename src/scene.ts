@@ -16,12 +16,44 @@ const TRAIL_LENGTH = 50;
 
 type Body = {
   mesh: THREE.Mesh;
+  halo: THREE.Mesh;
   radius: number;
   baseAngle: number; // natalGroup内でのローカル角度(黄経に対応)
   trail: THREE.Vector3[];
   trailPoints: THREE.Points;
   color: THREE.Color;
 };
+
+/** フェルトのような、縁がふわっと光るフレネル質感のハロー */
+function makeFuzzHalo(bodyRadius: number, color: THREE.Color): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(bodyRadius * 1.4, 20, 20);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: color } },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mvPosition.xyz);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        float fresnel = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewDir)), 0.0), 2.4);
+        gl_FragColor = vec4(uColor, fresnel * 0.85);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.BackSide,
+  });
+  return new THREE.Mesh(geo, mat);
+}
 
 function makeGlowTexture(): THREE.Texture {
   const size = 128;
@@ -48,7 +80,8 @@ export function startScene(container: HTMLElement): SceneController {
   const glowTexture = makeGlowTexture();
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x02020a, 0.025);
+  scene.background = new THREE.Color(0x241b30);
+  scene.fog = new THREE.FogExp2(0x241b30, 0.02);
 
   const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
   const baseCamPos = new THREE.Vector3(0, 10, 11);
@@ -64,20 +97,22 @@ export function startScene(container: HTMLElement): SceneController {
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    1.1,
-    0.65,
-    0.15
+    0.35,
+    0.8,
+    0.35
   );
   composer.addPass(bloomPass);
 
-  // --- 中心核(データとは独立した視覚上の中心) ---
+  // --- 中心核(データとは独立した視覚上の中心、毛糸玉のような温かい光) ---
   const core = new THREE.Mesh(
     new THREE.SphereGeometry(0.7, 32, 32),
-    new THREE.MeshBasicMaterial({ color: 0xcfd6ff })
+    new THREE.MeshStandardMaterial({ color: 0xf5dcae, emissive: 0xf5dcae, emissiveIntensity: 0.3, roughness: 1, metalness: 0 })
   );
   scene.add(core);
-  const coreLight = new THREE.PointLight(0xcfd6ff, 2.4, 30);
+  core.add(makeFuzzHalo(0.7, new THREE.Color(0xf5dcae)));
+  const coreLight = new THREE.PointLight(0xf5dcae, 1.8, 30);
   scene.add(coreLight);
+  scene.add(new THREE.AmbientLight(0x4a3a5a, 0.8));
 
   // --- 星(瞬くシェーダー) ---
   const starCount = 1800;
@@ -102,7 +137,7 @@ export function startScene(container: HTMLElement): SceneController {
     uniforms: {
       uTime: { value: 0 },
       uLevel: { value: 0 },
-      uColor: { value: new THREE.Color(0x9fb4ff) },
+      uColor: { value: new THREE.Color(0xf5e3c2) },
     },
     vertexShader: `
       attribute float aPhase;
@@ -122,8 +157,8 @@ export function startScene(container: HTMLElement): SceneController {
       varying float vTwinkle;
       void main() {
         float d = length(gl_PointCoord - vec2(0.5));
-        float alpha = smoothstep(0.5, 0.0, d);
-        gl_FragColor = vec4(uColor * (0.6 + 0.4 * vTwinkle), alpha * (0.35 + 0.5 * vTwinkle));
+        float alpha = smoothstep(0.5, 0.05, d);
+        gl_FragColor = vec4(uColor * (0.7 + 0.3 * vTwinkle), alpha * (0.3 + 0.4 * vTwinkle));
       }
     `,
     transparent: true,
@@ -148,12 +183,12 @@ export function startScene(container: HTMLElement): SceneController {
   nebulaGeo.setAttribute("position", new THREE.BufferAttribute(nebulaPos, 3));
   const nebulaMat = new THREE.PointsMaterial({
     map: glowTexture,
-    size: 4,
+    size: 5,
     transparent: true,
-    opacity: 0.1,
-    blending: THREE.AdditiveBlending,
+    opacity: 0.12,
+    blending: THREE.NormalBlending,
     depthWrite: false,
-    color: 0x6655ff,
+    color: 0xcba8d8,
   });
   const nebula = new THREE.Points(nebulaGeo, nebulaMat);
   scene.add(nebula);
@@ -190,20 +225,22 @@ export function startScene(container: HTMLElement): SceneController {
   function addBody(radius: number, angleDeg: number, color: THREE.Color): Body {
     const mesh = new THREE.Mesh(
       bodyGeo,
-      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.7 })
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.22, roughness: 1, metalness: 0 })
     );
     const baseAngle = THREE.MathUtils.degToRad(angleDeg);
     mesh.position.set(Math.cos(baseAngle) * radius, 0, Math.sin(baseAngle) * radius);
+    const halo = makeFuzzHalo(0.35, color);
+    mesh.add(halo);
     natalGroup.add(mesh);
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(radius - 0.01, radius + 0.01, 128),
-      new THREE.MeshBasicMaterial({ color: 0x3a4a8a, side: THREE.DoubleSide, transparent: true, opacity: 0.25 })
+      new THREE.MeshBasicMaterial({ color: 0xcf9f72, side: THREE.DoubleSide, transparent: true, opacity: 0.3 })
     );
     ring.rotation.x = -Math.PI / 2;
     natalGroup.add(ring);
 
-    const body: Body = { mesh, radius, baseAngle, trail: [], trailPoints: makeTrailPoints(), color };
+    const body: Body = { mesh, halo, radius, baseAngle, trail: [], trailPoints: makeTrailPoints(), color };
     bodies.push(body);
     return body;
   }
@@ -218,12 +255,12 @@ export function startScene(container: HTMLElement): SceneController {
         new THREE.Vector3(Math.cos(a2) * tickRadius, 0, Math.sin(a2) * tickRadius),
       ];
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat = new THREE.LineBasicMaterial({ color: 0x6a7fd0, transparent: true, opacity: 0.55 });
+      const mat = new THREE.LineBasicMaterial({ color: 0xe0b97a, transparent: true, opacity: 0.6 });
       zodiacTickGroup.add(new THREE.Line(geo, mat));
     }
     const outline = new THREE.Mesh(
       new THREE.RingGeometry(tickRadius - 0.01, tickRadius + 0.01, 128),
-      new THREE.MeshBasicMaterial({ color: 0x3a4a8a, side: THREE.DoubleSide, transparent: true, opacity: 0.2 })
+      new THREE.MeshBasicMaterial({ color: 0xcf9f72, side: THREE.DoubleSide, transparent: true, opacity: 0.25 })
     );
     outline.rotation.x = -Math.PI / 2;
     zodiacTickGroup.add(outline);
@@ -242,6 +279,9 @@ export function startScene(container: HTMLElement): SceneController {
       scene.remove(b.trailPoints);
       b.trailPoints.geometry.dispose();
       (b.trailPoints.material as THREE.Material).dispose();
+      b.halo.geometry.dispose();
+      (b.halo.material as THREE.Material).dispose();
+      (b.mesh.material as THREE.Material).dispose();
     }
     bodies.length = 0;
     for (const child of [...extraGroup.children]) {
@@ -259,9 +299,9 @@ export function startScene(container: HTMLElement): SceneController {
     audio.configure(chart.scaleFreqs, chart.bpm);
     chartHue = chart.hue;
 
-    const sunColor = new THREE.Color(0xffd37a);
-    const moonColor = new THREE.Color(0xbfd4ff);
-    const ascColor = new THREE.Color(0xd59bff);
+    const sunColor = new THREE.Color(0xf0b86e);
+    const moonColor = new THREE.Color(0xd9c9f0);
+    const ascColor = new THREE.Color(0xf0a8c0);
 
     addBody(2.6, chart.sun.signIndex * 30 + chart.sun.degreeInSign, sunColor);
     addBody(4.4, chart.moon.signIndex * 30 + chart.moon.degreeInSign, moonColor);
@@ -269,9 +309,9 @@ export function startScene(container: HTMLElement): SceneController {
 
     if (legendEl) {
       legendEl.innerHTML =
-        `<span style="color:#ffd37a">☉ 太陽</span> ${chart.sun.signName}　` +
-        `<span style="color:#bfd4ff">☽ 月</span> ${chart.moon.signName}(${chart.moonPhaseName})　` +
-        `<span style="color:#d59bff">ASC 上昇</span> ${chart.ascendant.signName}`;
+        `<span style="color:#f0b86e">☉ 太陽</span> ${chart.sun.signName}　` +
+        `<span style="color:#d9c9f0">☽ 月</span> ${chart.moon.signName}(${chart.moonPhaseName})　` +
+        `<span style="color:#f0a8c0">ASC 上昇</span> ${chart.ascendant.signName}`;
       legendEl.classList.add("show");
     }
     narrate("reveal");
@@ -390,9 +430,9 @@ export function startScene(container: HTMLElement): SceneController {
   let elapsed = 0;
   let camAngle = 0;
   const tmpColor = new THREE.Color();
-  const lowColor = new THREE.Color(0xff5a33);
-  const midColor = new THREE.Color(0x33ffa0);
-  const highColor = new THREE.Color(0x8a66ff);
+  const lowColor = new THREE.Color(0xf0a98a);
+  const midColor = new THREE.Color(0xa8d9b8);
+  const highColor = new THREE.Color(0xc9a8e8);
   const accentColor = new THREE.Color();
   const worldPos = new THREE.Vector3();
   let prevGroupAngle = 0;
@@ -421,7 +461,7 @@ export function startScene(container: HTMLElement): SceneController {
         const p = body.trail[i];
         posAttr.setXYZ(i, p.x, p.y, p.z);
         const fade = 1 - i / TRAIL_LENGTH;
-        tmpColor.copy(body.color).multiplyScalar(fade * fade * 1.4);
+        tmpColor.copy(body.color).multiplyScalar(fade * fade * 1.1);
         colAttr.setXYZ(i, tmpColor.r, tmpColor.g, tmpColor.b);
       }
       posAttr.needsUpdate = true;
@@ -447,7 +487,7 @@ export function startScene(container: HTMLElement): SceneController {
     nebulaMat.opacity = 0.1 + ((bands.low + bands.mid + bands.high) / 3) * 0.35;
     nebula.rotation.y += dt * 0.02;
 
-    bloomPass.strength = 0.9 + level * 1.4;
+    bloomPass.strength = 0.3 + level * 0.5;
 
     // 流れ星の生成と更新
     if (elapsed > nextShootingStarAt) {

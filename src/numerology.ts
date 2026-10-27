@@ -16,8 +16,8 @@ export type NumerologyChart = {
 };
 
 const NUMBER_COLORS: Record<number, number> = {
-  1: 0xff4d4d, 2: 0xff9a4d, 3: 0xffe14d, 4: 0x6dff4d, 5: 0x4dd9ff,
-  6: 0x6a4dff, 7: 0xb44dff, 8: 0xff4dc8, 9: 0xffffff, 11: 0xd0d0ff, 22: 0xffe6a8, 33: 0xffffff,
+  1: 0xf0918a, 2: 0xf0b48a, 3: 0xf0dc8a, 4: 0xa8d99a, 5: 0x9ad4e0,
+  6: 0xa8a8e8, 7: 0xcba8e8, 8: 0xe8a8d4, 9: 0xf0e8dc, 11: 0xd4d0f0, 22: 0xf0dcae, 33: 0xf0e8dc,
 };
 
 const NUMBER_TRAITS: Record<number, string> = {
